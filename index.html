@@ -53,6 +53,8 @@ body.playing nav{display:none}
 .glyph{font-family:var(--goth);font-weight:700;font-size:120px;font-size:min(66cqh,62cqw);line-height:1.1;white-space:nowrap}
 .glyph.klee{font-family:var(--klee);font-weight:600}
 .glyph.word{font-size:64px;font-size:min(42cqh,21cqw)}
+.glyph.rom{font-family:'Archivo',sans-serif;font-weight:800;letter-spacing:.01em}
+.reveal .mean{font-size:15px;font-weight:700}
 .plate .strip{height:12px;flex:none;background:var(--row)}
 .plate.flash .face{background:var(--row);color:#fff}
 .plate.flash .q{color:#fff}
@@ -144,8 +146,9 @@ body.reduit .shake{animation:none}
       <div class="tile"><b class="num" id="s-slow">0</b><span>trop lents</span></div>
       <div class="tile"><b class="num" id="s-ko">0</b><span>à revoir</span></div>
     </div>
-    <button class="btn" id="go">Commencer · 2 min</button>
-    <p class="note">Tape la lecture en romaji : ça valide tout seul. Une erreur revient dans la même session, avec son sosie.</p>
+    <button class="btn" id="go">Kana · 2 min</button>
+    <button class="btn alt" id="go2">Mots · 2 min</button>
+    <p class="note">Kana : tape la lecture en romaji, ça valide tout seul. Mots : 10 000 mots courants en hiragana à lire, et parfois l'inverse (romaji à écrire en hiragana, clavier japonais nécessaire).</p>
   </div>
 
   <div id="q-play" style="display:none;flex-direction:column;gap:14px">
@@ -165,7 +168,7 @@ body.reduit .shake{animation:none}
       <div class="bar" id="bar"><i id="barfill"></i><u></u></div>
     </div>
     <div class="field">
-      <label for="ans">Lecture en romaji · validation automatique</label>
+      <label for="ans" id="anslab">Lecture en romaji · validation automatique</label>
       <div class="rowf">
         <input id="ans" type="text" inputmode="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         <button class="btn alt" id="skip">Je ne sais pas</button>
@@ -220,8 +223,9 @@ body.reduit .shake{animation:none}
     <div class="set"><label for="o-vib">Vibrations</label><input type="checkbox" id="o-vib"></div>
     <div class="set"><label for="o-red">Animations réduites</label><input type="checkbox" id="o-red"></div>
     <div class="set"><label for="o-kata">Katakana débloqués</label><input type="checkbox" id="o-kata"></div>
+    <div class="set"><label for="o-inv">Mots : romaji → hiragana parfois</label><input type="checkbox" id="o-inv"></div>
   </div>
-  <p class="note">Les katakana se débloquent seuls à 40 hiragana acquis. La progression est enregistrée dans ce navigateur uniquement.</p>
+  <p class="note">Les katakana se débloquent seuls à 40 hiragana acquis. La progression est enregistrée dans ce navigateur uniquement. Mots : JMdict (EDRDG), licence CC BY-SA 4.0, sens en anglais.</p>
   <button class="btn alt small" id="reset">Effacer ma progression</button>
 </section>
 
@@ -299,6 +303,50 @@ function sEnd(){[523,659,784].forEach(function(f,i){tone(f,.18,"triangle",.25,i*
 function vib(p){if(S.set.vib&&navigator.vibrate){try{navigator.vibrate(p)}catch(e){}}}
 function say(txt){if(!S.set.voix)return;try{var u=new SpeechSynthesisUtterance(txt);u.lang="ja-JP";u.rate=.9;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 
+/* ---------- mots (10 000) ---------- */
+var BIG=null,bigWait=[];
+function loadWords(cb){if(BIG)return cb&&cb(true);if(cb)bigWait.push(cb);if(loadWords.busy)return;loadWords.busy=1;
+  fetch("words.json").then(function(r){return r.json()}).then(function(j){BIG=j;loadWords.busy=0;bigWait.splice(0).forEach(function(f){f(true)})})
+  .catch(function(){loadWords.busy=0;bigWait.splice(0).forEach(function(f){f(false)})})}
+var KR={};(function(){
+  var k="あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ";
+  var r="a i u e o ka ki ku ke ko sa shi,si su se so ta chi,ti tsu,tu te to na ni nu ne no ha hi fu,hu he ho ma mi mu me mo ya yu yo ra ri ru re ro wa wo,o ga gi gu ge go za ji,zi zu ze zo da ji,di zu,du de do ba bi bu be bo pa pi pu pe po".split(" ");
+  Array.from(k).forEach(function(c,i){KR[c]=r[i].split(",")});
+  var st={"き":["ky"],"ぎ":["gy"],"に":["ny"],"ひ":["hy"],"び":["by"],"ぴ":["py"],"み":["my"],"り":["ry"],"し":["sh","sy"],"ち":["ch","ty"],"じ":["j","jy","zy"],"ぢ":["j","dy"]};
+  var sm={"ゃ":"a","ゅ":"u","ょ":"o"};
+  Object.keys(st).forEach(function(c){Object.keys(sm).forEach(function(y){KR[c+y]=st[c].map(function(x){return x+sm[y]})})});
+})();
+function tokens(kana){
+  var a=Array.from(kana),out=[],i;
+  for(i=0;i<a.length;i++){if(i+1<a.length&&"ゃゅょ".indexOf(a[i+1])>=0){out.push(a[i]+a[i+1]);i++}else out.push(a[i])}
+  var opts=new Array(out.length);
+  for(i=out.length-1;i>=0;i--){
+    if(out[i]==="ん")opts[i]=["n","nn","n'"];
+    else if(out[i]==="っ"){var set={};(opts[i+1]||[]).forEach(function(o){set[o.charAt(0)]=1;if(o.indexOf("ch")===0)set.t=1});opts[i]=Object.keys(set)}
+    else opts[i]=KR[out[i]]||[];
+  }
+  var canon="";
+  for(i=0;i<out.length;i++){
+    var nx=opts[i+1]?opts[i+1][0]:"";
+    if(out[i]==="ん")canon+=/^[aiueoy]/.test(nx)?"n'":"n";
+    else if(out[i]==="っ")canon+=nx.indexOf("ch")===0?"t":nx.charAt(0);
+    else canon+=opts[i][0];
+  }
+  return{opts:opts,canon:canon,len:a.length};
+}
+function matchRom(opts,typed){ /* 2 = complet, 1 = début correct, 0 = faux */
+  var memo={};
+  function f(i,pos){var key=i+"|"+pos;if(key in memo)return memo[key];var res=0;
+    if(pos===typed.length)res=i===opts.length?2:1;
+    else if(i<opts.length){var rest=typed.slice(pos);
+      for(var j=0;j<opts[i].length&&res<2;j++){var o=opts[i][j];
+        if(rest.indexOf(o)===0)res=Math.max(res,f(i+1,pos+o.length));else if(o.indexOf(rest)===0)res=Math.max(res,1)}}
+    return memo[key]=res}
+  return f(0,0);
+}
+function normK(v){return v.replace(/[\s\u3000]/g,"").replace(/ぢ/g,"じ").replace(/づ/g,"ず")}
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
 /* ---------- session ---------- */
 var Q=null; // session en cours
 var cur=null, t0=0, raf=0, locked=false, pend=0;
@@ -306,6 +354,8 @@ function variants(word){var out=[""];Array.from(word).forEach(function(ch){var a
 function eligibleWords(){return WORDS.filter(function(w){return Array.from(w[0]).every(function(ch){return status(BYCH[ch])==="ok"})})}
 function pick(){
   var now=Date.now(),i;
+  if(Q.mode==="mots"){var w,n=0;do{w=BIG[Math.floor(Math.random()*BIG.length)]}while(Q.seen[w[0]]&&++n<20);Q.seen[w[0]]=1;
+    return{big:w,rev:S.set.inv!==false&&Q.n>0&&Math.random()<.25}}
   if(Q.forced.length)return{it:Q.forced.shift(),forced:true};
   for(i=0;i<Q.retry.length;i++)if(Q.retry[i].at<=Q.n){var r=Q.retry.splice(i,1)[0];return{it:r.it}}
   if(Q.n%6===5){var ws=eligibleWords().filter(function(w){return w[0]!==Q.lastWord});if(ws.length){var w=ws[Math.floor(Math.random()*ws.length)];Q.lastWord=w[0];return{word:w}}}
@@ -320,12 +370,21 @@ function show(){
   p.className="plate";$("reveal").innerHTML="";
   document.documentElement.style.setProperty("--row",cur.it?COL[row]:"#0E0F11");
   $("badge").textContent=cur.it?LET[row]:"字";
-  g.textContent=cur.it?cur.it.ch:cur.word[0];
+  g.textContent=cur.it?cur.it.ch:cur.word?cur.word[0]:"";
   g.className="glyph"+(Math.random()<.5?" klee":"")+(cur.word?" word":"");
   void g.offsetWidth;g.classList.add("in");
   $("qlab").textContent=cur.word?"LIS LE MOT":"QUELLE LECTURE ?";
-  cur.acc=cur.it?cur.it.acc:variants(cur.word[0]);
-  cur.obj=S.set.obj*(cur.word?Array.from(cur.word[0]).length:1);
+  cur.acc=cur.it?cur.it.acc:cur.word?variants(cur.word[0]):[];
+  cur.len=cur.word?Array.from(cur.word[0]).length:1;
+  g.style.fontSize="";$("anslab").textContent="Lecture en romaji · validation automatique";$("ans").setAttribute("lang","fr");
+  if(cur.big){
+    var tk=tokens(cur.big[0]);cur.opts=tk.opts;cur.canon=tk.canon;cur.len=tk.len;
+    document.documentElement.style.setProperty("--row","#0E0F11");$("badge").textContent="語";
+    if(cur.rev){g.textContent=tk.canon;g.className="glyph rom";void g.offsetWidth;g.classList.add("in");g.style.fontSize="min(34cqh,"+Math.floor(150/Math.max(tk.canon.length,4))+"cqw)";
+      $("qlab").textContent="ÉCRIS-LE EN HIRAGANA";$("anslab").textContent="En hiragana · clavier japonais · Entrée pour passer";$("ans").setAttribute("lang","ja")}
+    else{g.textContent=cur.big[0];g.className="glyph"+(Math.random()<.5?" klee":"");void g.offsetWidth;g.classList.add("in");g.style.fontSize="min(46cqh,"+Math.floor(88/Math.max(tk.len,2))+"cqw)";$("qlab").textContent="LIS LE MOT"}
+  }
+  cur.obj=S.set.obj*cur.len;
   $("ans").value="";t0=performance.now();tick();
 }
 function tick(){
@@ -339,9 +398,14 @@ function tick(){
 }
 function onInput(){
   if(!Q||locked||!cur)return;
-  var v=$("ans").value.toLowerCase().replace(/[^a-z]/g,"");clearTimeout(pend);
+  var raw=$("ans").value,t=(performance.now()-t0)/1000;clearTimeout(pend);
+  if(cur.big){
+    if(cur.rev){var kv=normK(raw);if(kv&&kv.slice(-normK(cur.big[0]).length)===normK(cur.big[0]))good(t);return}
+    var lv=raw.toLowerCase().replace(/[’‘`´]/g,"'").replace(/[^a-z']/g,"");if(!lv)return;
+    var m=matchRom(cur.opts,lv);if(m===2)good(t);else if(m===0)bad(null);return;
+  }
+  var v=raw.toLowerCase().replace(/[^a-z]/g,"");
   if(!v)return;
-  var t=(performance.now()-t0)/1000;
   if(cur.acc.indexOf(v)>=0){
     var amb=cur.it&&ALLROM.some(function(r){return r!==v&&r.indexOf(v)===0});
     if(amb){pend=setTimeout(function(){good(t)},450);return}
@@ -355,7 +419,7 @@ function onInput(){
   bad(null);
 }
 function good(t){
-  locked=true;Q.n++;Q.ok++;Q.combo++;Q.best=Math.max(Q.best,Q.combo);Q.times.push(t/(cur.word?Array.from(cur.word[0]).length:1));
+  locked=true;Q.n++;Q.ok++;Q.combo++;Q.best=Math.max(Q.best,Q.combo);Q.times.push(t/(cur.len||1));
   var fast=t<=cur.obj;
   if(cur.it){
     var x=st(cur.it),was=status(cur.it);
@@ -365,11 +429,13 @@ function good(t){
     if(cur.forced)Q.sosies[cur.it.ch]=1;
     S.tsum+=t;S.tn++;Q.recent.push(cur.it.id);if(Q.recent.length>2)Q.recent.shift();
     say(cur.it.ch);
-  }else{say(cur.word[0]);$("qlab").textContent=cur.acc[0].toUpperCase()+" · "+cur.word[1].toUpperCase()}
+  }else if(cur.big){say(cur.big[0]);S.mots=(S.mots||0)+1;$("ans").value="";
+    $("qlab").textContent=(cur.rev?cur.big[0]:cur.canon.toUpperCase())+(cur.big[1]?" · "+cur.big[1]:"")+" · "+cur.big[2].toUpperCase()}
+  else{say(cur.word[0]);$("qlab").textContent=cur.acc[0].toUpperCase()+" · "+cur.word[1].toUpperCase()}
   save();sOk(Q.combo,fast);vib(15);
   $("combo").textContent="× "+Q.combo;
   $("plate").classList.add("flash");
-  setTimeout(next,cur.word?900:320);
+  setTimeout(next,cur.big?1300:cur.word?900:320);
 }
 function bad(other){
   locked=true;Q.n++;Q.combo=0;$("combo").textContent="× 0";
@@ -388,20 +454,24 @@ function bad(other){
       (shown?'<div class="card"><b>'+shown.ch+'</b><span><small>'+(other?"TU AS TAPÉ":"SON SOSIE")+'</small>'+disp(shown)+'</span></div>':"")+'</div>';
     if(grp)tip=grp[1];
     say(cur.it.ch);
+  }else if(cur.big){
+    html='<div class="pair"><div class="card good"><span><small>C\'ÉTAIT</small>'+esc(cur.big[0])+' · '+esc(cur.canon)+'</span></div></div><p class="mean">'+(cur.big[1]?esc(cur.big[1])+' · ':'')+esc(cur.big[2])+'</p>';
+    say(cur.big[0]);tip=" ";$("ans").value="";
   }else{
     html='<div class="pair"><div class="card good"><span><small>C\'ÉTAIT</small>'+cur.acc[0]+' · '+cur.word[1]+'</span></div></div>';
     say(cur.word[0]);
   }
   save();sKo();vib([30,60,30]);
-  $("reveal").innerHTML=html+(tip?"<p>"+tip+"</p>":"");
+  $("reveal").innerHTML=html+(tip&&tip!==" "?"<p>"+tip+"</p>":"");
   var p=$("plate");p.classList.add("wrong");p.classList.add("shake");
   setTimeout(next,tip?2600:1500);
 }
 function disp(it){return it.rom==="wo"?"(w)o":it.rom}
 function next(){if(!Q)return;if(Date.now()>=Q.end)return finish();show();$("ans").focus()}
-function start(){
-  audioInit();
-  Q={ok0:count("h","ok")+count("k","ok"),end:Date.now()+12e4,n:0,ok:0,combo:0,best:0,times:[],retry:[],forced:[],recent:[],sosies:{},gained:0,lastWord:""};
+var lastMode="kana";
+function start(mode){
+  mode=mode==="mots"?"mots":"kana";lastMode=mode;audioInit();
+  Q={mode:mode,seen:{},ok0:count("h","ok")+count("k","ok"),end:Date.now()+12e4,n:0,ok:0,combo:0,best:0,times:[],retry:[],forced:[],recent:[],sosies:{},gained:0,lastWord:""};
   document.body.classList.add("playing");
   $("q-start").style.display="none";$("q-end").style.display="none";$("q-play").style.display="flex";
   $("combo").textContent="× 0";$("objTxt2").textContent=fr(S.set.obj);
@@ -417,7 +487,8 @@ function finish(){
   var acc=Math.round(q.ok/q.n*100),avg=q.times.length?q.times.reduce(function(a,b){return a+b},0)/q.times.length:0;
   var gained=count("h","ok")+count("k","ok")-q.ok0,sos=Object.keys(q.sosies).join(" "),okH=count("h","ok")+(kataOn()?count("k","ok"):0),tot=kataOn()?92:46;
   $("r-head").textContent=q.ok+" bonnes réponses sur "+q.n;
-  var rows=[["Précision",acc+" %"],["Temps moyen",avg?fr(avg)+" s":"–"],["Meilleure série","× "+q.best],["Kana acquis",okH+" / "+tot+(gained>0?"  (+"+gained+")":"")]];
+  var rows=[["Précision",acc+" %"],[q.mode==="mots"?"Temps moyen par kana":"Temps moyen",avg?fr(avg)+" s":"–"],["Meilleure série","× "+q.best],
+    q.mode==="mots"?["Mots lus au total",String(S.mots||0)]:["Kana acquis",okH+" / "+tot+(gained>0?"  (+"+gained+")":"")]];
   if(sos)rows.push(["Sosies réussis",sos]);
   $("r-body").innerHTML=rows.map(function(r){return'<div class="kv"><span>'+r[0]+'</span><span class="num">'+r[1]+'</span></div>'}).join("");
   lastText="Kana 1,5 s — "+q.ok+"/"+q.n+" ("+acc+" %), temps moyen "+(avg?fr(avg)+" s":"–")+", série × "+q.best+", "+okH+"/"+tot+" kana acquis"+(sos?", sosies réussis : "+sos:"");
@@ -450,7 +521,7 @@ function render(){
   $("p-h").textContent=okH+" / 46";$("p-hb").style.width=okH/46*100+"%";
   $("p-k").textContent=kataOn()?okK+" / 46":"verrouillé";$("p-kb").style.width=okK/46*100+"%";
   $("o-nom").value=S.set.nom;$("o-obj").value=String(S.set.obj);
-  $("o-son").checked=S.set.son;$("o-voix").checked=S.set.voix;$("o-vib").checked=S.set.vib;$("o-red").checked=S.set.red;$("o-kata").checked=kataOn();
+  $("o-son").checked=S.set.son;$("o-voix").checked=S.set.voix;$("o-vib").checked=S.set.vib;$("o-red").checked=S.set.red;$("o-kata").checked=kataOn();$("o-inv").checked=S.set.inv!==false;
   document.body.classList.toggle("reduit",!!S.set.red);
 }
 function route(){
@@ -463,8 +534,12 @@ function route(){
 
 /* ---------- événements ---------- */
 load();
-$("go").addEventListener("click",start);
-$("again").addEventListener("click",start);
+$("go").addEventListener("click",function(){start("kana")});
+$("go2").addEventListener("click",function(){var b=this;if(BIG)return start("mots");b.textContent="Chargement des mots…";
+  loadWords(function(ok){b.textContent=ok?"Mots prêts · touche pour lancer":"Mots indisponibles (connexion ?)"})});
+$("again").addEventListener("click",function(){start(lastMode==="mots"&&BIG?"mots":"kana")});
+$("ans").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();if(Q&&!locked&&cur&&cur.big&&cur.rev){bad(null)}}});
+setTimeout(function(){loadWords()},400);
 $("quit").addEventListener("click",finish);
 $("skip").addEventListener("click",function(){if(Q&&!locked&&cur){bad(null);$("ans").focus()}});
 $("ans").addEventListener("input",onInput);
@@ -473,7 +548,7 @@ $("seg").addEventListener("click",function(e){var b=e.target.closest("button");i
 $("grid").addEventListener("click",function(e){var b=e.target.closest(".cell");if(!b)return;sel=sel===b.getAttribute("data-id")?null:b.getAttribute("data-id");render()});
 $("o-nom").addEventListener("change",function(){S.set.nom=this.value.trim();save();render()});
 $("o-obj").addEventListener("change",function(){S.set.obj=parseFloat(this.value);save();render()});
-[["o-son","son"],["o-voix","voix"],["o-vib","vib"],["o-red","red"],["o-kata","kata"]].forEach(function(p){$(p[0]).addEventListener("change",function(){S.set[p[1]]=this.checked;save();render()})});
+[["o-son","son"],["o-voix","voix"],["o-vib","vib"],["o-red","red"],["o-kata","kata"],["o-inv","inv"]].forEach(function(p){$(p[0]).addEventListener("change",function(){S.set[p[1]]=this.checked;save();render()})});
 var armed=0;
 $("reset").addEventListener("click",function(){var b=this;if(!armed){armed=1;b.textContent="Confirmer l'effacement";setTimeout(function(){armed=0;b.textContent="Effacer ma progression"},4000);return}
   armed=0;var keep=S.set;S=blank();S.set=keep;S.set.kata=false;save();b.textContent="Effacer ma progression";render()});
@@ -497,7 +572,7 @@ $("q-play").addEventListener("click",function(e){if(Q&&!e.target.closest("#quit"
 window.addEventListener("hashchange",route);
 route();
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js")}catch(e){}}
-window.__kana={S:function(){return S},Q:function(){return Q},cur:function(){return cur}};
+window.__kana={tokens:tokens,matchRom:matchRom,S:function(){return S},Q:function(){return Q},cur:function(){return cur}};
 })();
 </script>
 </body>
