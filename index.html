@@ -506,7 +506,7 @@ function show(){
   var P=$("play"),p=$("plate"),g=$("glyph");
   p.className="plate";$("reveal").innerHTML="";g.style.fontSize="";g.className="glyph";
   P.classList.toggle("qcm",cur.type==="kanji"&&!cur.intro);P.classList.toggle("intro",!!cur.intro);
-  $("anslab").textContent="Lecture en romaji · validation automatique";$("ans").setAttribute("lang","fr");$("ans").value="";
+  $("anslab").textContent="Lecture en romaji · validation automatique";$("ans").setAttribute("lang","fr");$("ans").value="";$("skip").textContent="Je ne sais pas";
   cur.len=1;
   if(cur.type==="kana"){
     setRow(cur.it.row.color,cur.it.row.label);g.textContent=cur.it.ch;if(Math.random()<.5)g.classList.add("klee");
@@ -612,12 +612,12 @@ function bad(other){
     say(cur.big[0]);$("ans").value="";hold_=2600;
   }else{
     var y=st("j"+cur.kj[0]);y.n++;y.last="ko";y.b=0;y.due=0;Q.retry.push({it:cur.kj,at:Q.n+3});
-    html=kanjiCard(cur.kj,"C'ÉTAIT");hold_=2800;
+    html=kanjiCard(cur.kj,"C'ÉTAIT · TOUCHE POUR CONTINUER");hold_=2800;
   }
   save();sKo();vib([30,60,30]);
   $("reveal").innerHTML=html+(tip?"<p>"+esc(tip)+"</p>":"");
   var p=$("plate");p.classList.add("wrong");p.classList.add("shake");
-  hold(hold_);$("anslab").textContent="Touche l'écran ou tape une lettre pour continuer";
+  lockAt=performance.now();clearTimeout(holdT);holdT=-1;$("anslab").textContent="Touche l'écran ou tape une lettre pour continuer";$("skip").textContent="Continuer";
 }
 function choose(i){
   if(!Q||locked||!cur||cur.type!=="kanji"||cur.intro)return;
@@ -773,7 +773,7 @@ $("again").addEventListener("click",function(){start(lastMode)});
 $("home").addEventListener("click",function(){$("end").classList.remove("on");render()});
 $("share").addEventListener("click",share);
 $("quit").addEventListener("click",finish);
-$("skip").addEventListener("click",function(){if(Q&&!locked&&cur&&cur.type!=="kanji"){bad(null);$("ans").focus()}});
+$("skip").addEventListener("click",function(e){if(Q&&locked){e.stopPropagation();trySkip(0);$("ans").focus();return}if(Q&&cur&&cur.type!=="kanji"){e.stopPropagation();bad(null);$("ans").focus()}});
 $("ans").addEventListener("input",onInput);
 $("ans").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();if(Q&&!locked&&cur&&cur.type==="word"&&cur.rev)bad(null)}});
 $("ans").addEventListener("focus",function(){this.placeholder=""});
