@@ -449,7 +449,9 @@ function say(txt){if(!S.set.voix)return;try{var u=new SpeechSynthesisUtterance(t
 
 /* ---------- session ---------- */
 var MODES={kana:{name:"Kana",g:"あ",typing:1},sosies:{name:"Sosies",g:"ろる",typing:1},mots:{name:"Mots",g:"語",typing:1},kanji:{name:"Kanji",g:"漢",typing:0}};
-var Q=null,cur=null,t0=0,raf=0,locked=false,pend=0,lastMode="kana";
+var Q=null,cur=null,t0=0,raf=0,locked=false,pend=0,lastMode="kana",holdT=0,lockAt=0;
+function hold(ms){lockAt=performance.now();clearTimeout(holdT);holdT=setTimeout(next,ms)}
+function trySkip(min){if(Q&&locked&&holdT&&performance.now()-lockAt>=min){clearTimeout(holdT);holdT=0;next()}}
 function bump(it,forcedFlag){return{type:"kana",it:it,forced:!!forcedFlag}}
 function pickKana(){
   var now=Date.now(),i;
@@ -544,6 +546,7 @@ function tick(){
   })();
 }
 function onInput(){
+  if(Q&&locked){$("ans").value="";trySkip(350);return}
   if(!Q||locked||!cur||cur.type==="kanji")return;
   var raw=$("ans").value,t=(performance.now()-t0)/1000;clearTimeout(pend);
   if(cur.type==="word"){
@@ -566,7 +569,7 @@ function onInput(){
 function comboUp(){Q.combo++;Q.best=Math.max(Q.best,Q.combo);var c=$("combo");c.textContent="× "+Q.combo;c.classList.remove("pop");void c.offsetWidth;c.classList.add("pop")}
 function good(t){
   locked=true;Q.n++;Q.ok++;comboUp();Q.times.push(t/(cur.len||1));
-  var fast=t<=cur.obj,hold=320,stamp=false;
+  var fast=t<=cur.obj,hold_=320,stamp=false;
   if(cur.type==="kana"){
     var x=st(cur.it.id),was=status(cur.it);
     x.n++;x.ok++;x.ema=x.ema&&x.last!==""?x.ema*.5+t*.5:t;x.last="ok";
@@ -576,21 +579,21 @@ function good(t){
     S.tsum+=t;S.tn++;Q.recent.push(cur.it.id);if(Q.recent.length>2)Q.recent.shift();
     say(cur.it.ch);
   }else if(cur.type==="word"){
-    say(cur.big[0]);S.mots++;$("ans").value="";hold=1300;
+    say(cur.big[0]);S.mots++;$("ans").value="";hold_=1300;
     $("qlab").textContent=(cur.rev?cur.big[0]:cur.canon.toUpperCase())+(cur.big[1]?" · "+cur.big[1]:"")+" · "+cur.big[2].toUpperCase();
   }else{
-    var y=st("j"+cur.kj[0]),wasK=y.b>=3;y.n++;y.ok++;y.last="ok";y.b=Math.min(5,y.b+1);y.due=Date.now()+INT[y.b];hold=650;
+    var y=st("j"+cur.kj[0]),wasK=y.b>=3;y.n++;y.ok++;y.last="ok";y.b=Math.min(5,y.b+1);y.due=Date.now()+INT[y.b];hold_=650;
     if(y.b>=3&&!wasK){stamp=true;Q.stamps[cur.kj[0]]=1}
     if(cur.sub==="lecture")say(cur.ex[1]);
   }
   save();sOk(Q.combo,fast);vib(15);
   $("plate").classList.add("flash");
-  if(stamp){var s=document.createElement("span");s.className="stamp";s.textContent="ACQUIS";$("plate").appendChild(s);sStamp();hold=Math.max(hold,700);setTimeout(function(){if(s.parentNode)s.parentNode.removeChild(s)},hold)}
-  setTimeout(next,hold);
+  if(stamp){var s=document.createElement("span");s.className="stamp";s.textContent="ACQUIS";$("plate").appendChild(s);sStamp();hold_=Math.max(hold_,700);setTimeout(function(){if(s.parentNode)s.parentNode.removeChild(s)},hold_)}
+  hold(hold_);
 }
 function bad(other){
   locked=true;Q.n++;Q.combo=0;$("combo").textContent="× 0";
-  var html="",tip="",hold=1500;
+  var html="",tip="",hold_=1500;
   if(cur.type==="kana"){
     var it=cur.it,x=st(it.id);x.n++;x.last="ko";x.b=0;x.due=0;
     var grp=groupOf(it.ch);
@@ -602,19 +605,19 @@ function bad(other){
     var shown=other||partner;
     html='<div class="pair"><div class="card good"><b>'+it.ch+'</b><span><small>C\'ÉTAIT</small>'+disp(it)+'</span></div>'+
       (shown?'<div class="card"><b>'+shown.ch+'</b><span><small>'+(other?"TU AS TAPÉ":"SON SOSIE")+'</small>'+disp(shown)+'</span></div>':"")+'</div>';
-    if(grp){tip=grp[1];hold=2600}
+    if(grp){tip=grp[1];hold_=2600}
     say(it.ch);
   }else if(cur.type==="word"){
     html='<div class="pair"><div class="card good"><span><small>C\'ÉTAIT</small>'+esc(cur.big[0])+' · '+esc(cur.canon)+'</span></div></div><p class="mean">'+(cur.big[1]?esc(cur.big[1])+' · ':'')+esc(cur.big[2])+'</p>';
-    say(cur.big[0]);$("ans").value="";hold=2600;
+    say(cur.big[0]);$("ans").value="";hold_=2600;
   }else{
     var y=st("j"+cur.kj[0]);y.n++;y.last="ko";y.b=0;y.due=0;Q.retry.push({it:cur.kj,at:Q.n+3});
-    html=kanjiCard(cur.kj,"C'ÉTAIT");hold=2800;
+    html=kanjiCard(cur.kj,"C'ÉTAIT");hold_=2800;
   }
   save();sKo();vib([30,60,30]);
   $("reveal").innerHTML=html+(tip?"<p>"+esc(tip)+"</p>":"");
   var p=$("plate");p.classList.add("wrong");p.classList.add("shake");
-  setTimeout(next,hold);
+  hold(hold_);$("anslab").textContent="Touche l'écran ou tape une lettre pour continuer";
 }
 function choose(i){
   if(!Q||locked||!cur||cur.type!=="kanji"||cur.intro)return;
@@ -627,7 +630,7 @@ function gotIt(){
   var x=st("j"+cur.kj[0]);x.intro=1;x.due=0;save();Q.retry.push({it:cur.kj,at:Q.n+1});Q.intros++;
   next();
 }
-function next(){if(!Q)return;if(Date.now()>=Q.end)return finish();show();if(MODES[Q.mode].typing)$("ans").focus()}
+function next(){clearTimeout(holdT);holdT=0;if(!Q)return;if(Date.now()>=Q.end)return finish();show();if(MODES[Q.mode].typing)$("ans").focus()}
 function start(mode){
   if(!MODES[mode])mode="kana";
   if(mode==="mots"&&!BIG)return loadJSON("words",function(ok){render();if(!ok)flash("Mots indisponibles : vérifie la connexion.")});
@@ -644,7 +647,7 @@ function start(mode){
 }
 var lastText="",lastCard=null;
 function finish(){
-  var q=Q;Q=null;cur=null;cancelAnimationFrame(raf);clearTimeout(pend);
+  var q=Q;Q=null;cur=null;cancelAnimationFrame(raf);clearTimeout(pend);clearTimeout(holdT);holdT=0;
   document.body.classList.remove("playing");$("ans").blur();$("play").classList.remove("on");vvSoon();
   if(!q||(!q.n&&!q.intros)){render();return}
   var secs=Math.min(q.dur,Math.round((Date.now()-q.t0)/1000)),d=today();
@@ -775,7 +778,7 @@ $("ans").addEventListener("input",onInput);
 $("ans").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();if(Q&&!locked&&cur&&cur.type==="word"&&cur.rev)bad(null)}});
 $("ans").addEventListener("focus",function(){this.placeholder=""});
 $("ans").addEventListener("blur",function(){this.placeholder="Touche ici pour le clavier"});
-$("play").addEventListener("click",function(e){if(Q&&MODES[Q.mode].typing&&!e.target.closest("#quit"))$("ans").focus()});
+$("play").addEventListener("click",function(e){if(!Q||e.target.closest("#quit"))return;if(locked)trySkip(120);if(Q&&MODES[Q.mode].typing)$("ans").focus()});
 $("qcm").addEventListener("click",function(e){var b=e.target.closest(".choice");if(b)choose(+b.getAttribute("data-i"))});
 $("gotit").addEventListener("click",gotIt);
 $("seg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;script=b.getAttribute("data-s");sel=null;Array.prototype.forEach.call(this.children,function(c){c.setAttribute("aria-pressed",c===b)});if(script==="j")loadJSON("kanji");render()});
